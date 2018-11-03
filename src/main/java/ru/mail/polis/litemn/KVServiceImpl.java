@@ -64,7 +64,6 @@ public class KVServiceImpl extends HttpServer implements KVService {
         this.quorum = RF.quorum(topology.size());
         clients = new HashMap<>(topology.size() - 1);
         hosts = new ArrayList<>(topology.size() - 1);
-        hosts.sort(String::compareTo);
         for (String host : topology) {
             int indexOf = host.lastIndexOf(':');
             if (indexOf == -1) {
@@ -76,6 +75,7 @@ public class KVServiceImpl extends HttpServer implements KVService {
             hosts.add(host);
             clients.put(host, new HttpClient(new ConnectionString(host)));
         }
+        hosts.sort(String::compareTo);
         executor = Executors.newWorkStealingPool();
         processor = CommandProcessorFactory.newCommandProcessor(executor);
         getProcessor = CommandProcessorFactory.newCommandProcessor(executor);
@@ -103,13 +103,7 @@ public class KVServiceImpl extends HttpServer implements KVService {
     public void handleDefault(Request request, HttpSession session) throws IOException {
         RF rf = quorum;
         boolean internal = request.getHeader(INTERNAL_HEADER) != null;
-        LOGGER.debug(
-                "Request: method={}, path={}, host={}, internal={}",
-                request.getMethod(),
-                request.getPath(),
-                request.getHost(),
-                internal
-        );
+        LOGGER.debug("Request: {}", request);
         if (!request.getPath().equals(ENTITY_PATH)) {
             LOGGER.debug("Bad path {}", request.getPath());
             session.sendResponse(new Response(Response.BAD_REQUEST, Response.EMPTY));
@@ -149,7 +143,6 @@ public class KVServiceImpl extends HttpServer implements KVService {
                 session.sendResponse(new Response(Response.BAD_REQUEST, Response.EMPTY));
         }
     }
-
 
     private void getInternal(final @NotNull HttpSession session, final @NotNull String id) throws IOException {
         try {

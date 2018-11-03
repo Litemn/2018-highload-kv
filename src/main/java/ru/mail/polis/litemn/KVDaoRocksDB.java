@@ -8,6 +8,7 @@ import ru.mail.polis.KVDao;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.NoSuchElementException;
 
@@ -16,8 +17,9 @@ import java.util.NoSuchElementException;
  */
 public class KVDaoRocksDB implements KVDao {
 
-    private static final byte[] EXISTS = new byte[]{1};
-    private static final byte[] REMOVED = new byte[]{0};
+    private static final int FLAG_LENGTH = 1;
+    private static final byte EXISTS = FLAG_LENGTH;
+    private static final byte REMOVED = 0;
     private static final byte[] EMPTY = new byte[]{};
 
     static {
@@ -43,10 +45,10 @@ public class KVDaoRocksDB implements KVDao {
     public byte[] get(@NotNull byte[] key) throws NoSuchElementException, IOException {
         try {
             byte[] bytes = db.get(key);
-            if (bytes == null || bytes.length == 0 || bytes[0] == REMOVED[0]) {
+            if (bytes == null || bytes.length == 0 || bytes[0] == REMOVED) {
                 throw new NoSuchElementException();
             }
-            return Arrays.copyOfRange(bytes, EXISTS.length + Long.BYTES, bytes.length);
+            return Arrays.copyOfRange(bytes, FLAG_LENGTH + Long.BYTES, bytes.length);
         } catch (RocksDBException e) {
             throw new IOException(e);
         }
@@ -88,11 +90,11 @@ public class KVDaoRocksDB implements KVDao {
             if (bytes == null || bytes.length == 0) {
                 return StorageValue.absent();
             }
-            long time = ByteUtils.getLong(Arrays.copyOfRange(bytes, EXISTS.length, Long.BYTES + 1));
-            if (bytes[0] == REMOVED[0]) {
+            long time = ByteUtils.getLong(Arrays.copyOfRange(bytes, FLAG_LENGTH, Long.BYTES + FLAG_LENGTH));
+            if (bytes[0] == REMOVED) {
                 return StorageValue.removed(time);
             }
-            byte[] value = Arrays.copyOfRange(bytes, EXISTS.length + Long.BYTES, bytes.length);
+            byte[] value = Arrays.copyOfRange(bytes, FLAG_LENGTH + Long.BYTES, bytes.length);
             return StorageValue.exists(value, time);
         } catch (RocksDBException e) {
             throw new IOException(e);
@@ -119,13 +121,12 @@ public class KVDaoRocksDB implements KVDao {
      * @param flag  flag {@code ru.mail.polis.litemn.KVDaoRocksDB#EXISTS} {@code ru.mail.polis.litemn.KVDaoRocksDB#REMOVED}
      * @return array of bytes in correct form
      */
-    private byte[] getStoredValue(@NotNull byte[] value, @NotNull byte[] flag) {
-        byte[] stored = new byte[value.length + 1 + Long.BYTES];
-        byte[] time = ByteUtils.getBytes(System.currentTimeMillis());
-        System.arraycopy(flag, 0, stored, 0, flag.length);
-        System.arraycopy(time, 0, stored, flag.length, time.length);
-        System.arraycopy(value, 0, stored, flag.length + time.length, value.length);
-        return stored;
+    private byte[] getStoredValue(@NotNull byte[] value, @NotNull byte flag) {
+        ByteBuffer byteBuffer = ByteBuffer.allocate(FLAG_LENGTH + value.length + Long.BYTES);
+        byteBuffer.put(flag);
+        byteBuffer.putLong(System.currentTimeMillis());
+        byteBuffer.put(value);
+        return byteBuffer.array();
     }
 
     @Override
